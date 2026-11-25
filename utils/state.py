@@ -25,6 +25,23 @@ def keep(key):
     st.session_state[key] = st.session_state["_" + key]
 
 
+# 예시 참여자: 중간지점 찾기의 [예시 채우기]와 홈의 [예시로 체험하기]에서 함께 쓴다
+EXAMPLE = [
+    ("민수", "서울대입구역"),
+    ("지수", "노원역"),
+    ("철수", "천호역"),
+]
+
+
+def fill_example():
+    """예시 참여자 3명을 중간지점 찾기 입력칸에 채운다. (값은 밑줄 없는 키에 넣고, 페이지가 prepare로 위젯에 옮긴다)"""
+    st.session_state["count"] = len(EXAMPLE)
+    for i, (name, query) in enumerate(EXAMPLE):
+        st.session_state[f"name_{i}"] = name
+        st.session_state[f"query_{i}"] = query
+        st.session_state[f"choice_{i}"] = 0
+
+
 def demo_mode_toggle():
     """사이드바에 '데모 모드' 토글을 그리고, 현재 값(True/False)을 돌려준다.
 

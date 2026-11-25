@@ -21,7 +21,7 @@ from streamlit_folium import st_folium
 from utils.candidates import MAX_START_KM, find_candidates, km_to_nearest_station, load_stations, search_stations
 from utils.fairness import PRESET_DESCRIPTIONS, PRESETS, score_stations
 from utils.kakao_api import build_time_table, search_places
-from utils.state import keep, prepare
+from utils.state import fill_example, keep, prepare
 from utils.text import md_escape
 
 st.set_page_config(page_title="중간지점 찾기", page_icon="📍", layout="wide")
@@ -30,23 +30,8 @@ MIN_PEOPLE = 2
 MAX_PEOPLE = 6
 NUM_CANDIDATES = 10  # 후보역 수 k
 
-EXAMPLE = [  # [예시 채우기] 버튼용
-    ("민수", "서울대입구역"),
-    ("지수", "노원역"),
-    ("철수", "천호역"),
-]
-
-
-# 입력값 유지 도우미 prepare/keep은 utils/state.py에 있다.
+# 입력값 유지 도우미 prepare/keep, 예시 채우기 fill_example은 utils/state.py에 있다.
 # (다른 페이지에 다녀와도 입력칸 값이 남도록 하는 장치)
-
-def fill_example():
-    """예시 참여자 3명을 입력칸에 채운다."""
-    st.session_state["count"] = len(EXAMPLE)
-    for i, (name, query) in enumerate(EXAMPLE):
-        st.session_state[f"name_{i}"] = name
-        st.session_state[f"query_{i}"] = query
-        st.session_state[f"choice_{i}"] = 0
 
 
 # ---------------- 출발지 검색 ----------------

@@ -35,7 +35,7 @@
 where2meet/
 ├── app.py                  # 시작 파일: st.navigation으로 페이지 목록(사이드바 이름·아이콘) 등록 + 데모 모드 토글
 ├── pages/
-│   ├── 0_홈.py              # 홈: 앱 소개, 사용법, 공평성 기준 설명, 페이지 링크
+│   ├── 0_홈.py              # 홈: 한 문장 소개, [약속 장소 찾기]·[예시로 체험하기] 버튼, 사용법, 기준 설명
 │   ├── 1_중간지점_찾기.py    # 메인
 │   ├── 2_주변_장소.py
 │   ├── 3_정산.py
@@ -46,7 +46,7 @@ where2meet/
 │   ├── candidates.py       # 하버사인 거리, 후보역 추출, 중심점
 │   ├── fairness.py         # 공평성 점수, 프리셋
 │   ├── settle.py           # 정산 알고리즘
-│   ├── state.py            # 페이지 이동 후 입력값 유지(prepare/keep), 데모 모드 토글
+│   ├── state.py            # 페이지 이동 후 입력값 유지(prepare/keep), 데모 모드 토글, 예시 채우기(fill_example)
 │   └── text.py             # 사용자 입력을 마크다운 문구에 넣을 때 특수문자 처리(md_escape)
 ├── data/stations.csv       # 지하철역 name, lines, lat, lon (공공데이터 전처리 결과)
 ├── prepare_data.py         # 원본 공공데이터 → stations.csv 전처리 스크립트
