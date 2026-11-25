@@ -20,6 +20,7 @@ st.set_page_config(page_title="주변 장소", page_icon="☕", layout="wide")
 
 MARKER_COLORS = {"카페": "green", "음식점": "orange"}
 
+demo_mode = st.session_state.get("demo_mode", False)  # 사이드바 토글은 app.py에서 그린다
 st.title("☕ 약속 장소 주변 둘러보기")
 
 # ---------------- 선행 데이터 확인 ----------------
@@ -49,7 +50,6 @@ with c3:
     keyword = st.text_input("메뉴 키워드 (선택)", placeholder="예: 삼겹살, 파스타, 디저트",
                             help="비워 두면 종류 전체를 가까운 순으로, 입력하면 그 메뉴와 관련된 곳만 찾습니다.")
 
-demo_mode = st.session_state.get("demo_mode", False)
 if demo_mode:
     st.info("데모 모드에서는 카카오 API를 부르지 않으므로 주변 장소 검색을 할 수 없습니다. 지도에 역 위치만 표시합니다.")
     places, error = [], None

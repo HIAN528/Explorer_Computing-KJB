@@ -19,6 +19,7 @@ from streamlit_folium import st_folium
 from utils.candidates import find_candidates, load_stations, search_stations
 from utils.fairness import PRESET_DESCRIPTIONS, PRESETS, score_stations
 from utils.kakao_api import build_time_table, search_places
+from utils.state import keep, prepare
 
 st.set_page_config(page_title="중간지점 찾기", page_icon="📍", layout="wide")
 
@@ -33,22 +34,8 @@ EXAMPLE = [  # [예시 채우기] 버튼용
 ]
 
 
-# ---------------- 입력값 유지 도우미 ----------------
-# 여러 페이지 앱에서는 다른 페이지에 다녀오면 입력칸(위젯)의 값이 지워진다.
-# 그래서 위젯 값은 "_이름" 키에 두고, 바뀔 때마다 "이름" 키(일반 값)에 복사해 둔다.
-# 페이지를 다시 열면 "이름" 키의 값을 위젯에 다시 넣어 준다.
-
-def prepare(key, default):
-    """위젯을 그리기 전에 호출: 저장해 둔 값(없으면 기본값)을 위젯 키에 넣는다."""
-    if key not in st.session_state:
-        st.session_state[key] = default
-    st.session_state["_" + key] = st.session_state[key]
-
-
-def keep(key):
-    """위젯 값이 바뀌면 호출(on_change): 위젯 값을 일반 키에 복사한다."""
-    st.session_state[key] = st.session_state["_" + key]
-
+# 입력값 유지 도우미 prepare/keep은 utils/state.py에 있다.
+# (다른 페이지에 다녀와도 입력칸 값이 남도록 하는 장치)
 
 def fill_example():
     """예시 참여자 3명을 입력칸에 채운다."""
@@ -99,12 +86,7 @@ def place_label(place):
 # ---------------- 화면: 입력 ----------------
 
 stations = load_stations()
-
-with st.sidebar:
-    prepare("demo_mode", False)
-    st.toggle("데모 모드 (API 호출 안 함)", key="_demo_mode", on_change=keep, args=["demo_mode"],
-              help="켜면 카카오 API 대신 직선거리 추정치만 씁니다. 출발지도 역 이름으로만 검색합니다.")
-demo_mode = st.session_state["demo_mode"]
+demo_mode = st.session_state.get("demo_mode", False)  # 사이드바 토글은 app.py에서 그린다
 
 st.title("📍 공평한 약속 장소 찾기")
 st.caption("출발지를 입력하면 실제 대중교통 시간을 기준으로 모두에게 공평한 지하철역을 추천합니다.")

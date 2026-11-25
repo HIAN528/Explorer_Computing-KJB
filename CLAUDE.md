@@ -33,8 +33,9 @@
 
 ```
 where2meet/
-├── app.py                  # 홈: 앱 소개, 사용법, 공평성 기준 설명, 페이지 링크
+├── app.py                  # 시작 파일: st.navigation으로 페이지 목록(사이드바 이름·아이콘) 등록 + 데모 모드 토글
 ├── pages/
+│   ├── 0_홈.py              # 홈: 앱 소개, 사용법, 공평성 기준 설명, 페이지 링크
 │   ├── 1_중간지점_찾기.py    # 메인
 │   ├── 2_주변_장소.py
 │   ├── 3_정산.py
@@ -44,7 +45,8 @@ where2meet/
 │   ├── kakao_api.py        # 카카오 API 호출 (장소 검색, 대중교통 시간, 주변 장소) + 소요시간 표
 │   ├── candidates.py       # 하버사인 거리, 후보역 추출, 중심점
 │   ├── fairness.py         # 공평성 점수, 프리셋
-│   └── settle.py           # 정산 알고리즘
+│   ├── settle.py           # 정산 알고리즘
+│   └── state.py            # 페이지 이동 후 입력값 유지(prepare/keep), 데모 모드 토글
 ├── data/stations.csv       # 지하철역 name, lines, lat, lon (공공데이터 전처리 결과)
 ├── prepare_data.py         # 원본 공공데이터 → stations.csv 전처리 스크립트
 ├── docs/                   # ai_log.md, troubleshooting.md
@@ -93,8 +95,11 @@ where2meet/
 
 | 키 | 내용 | 만드는 곳 | 쓰는 곳 |
 |---|---|---|---|
-| `result` | `{"people", "cands", "times", "est"}` (est = 추정값 여부 표) | 중간지점 찾기 | 분석 실험실, 정산 |
+| `result` | `{"people", "cands", "times", "est", "errors"}` (est = 추정값 여부 표, errors = API 오류 문구) | 중간지점 찾기 | 분석 실험실, 정산 |
 | `selected_station` | 확정한 역 이름 | 중간지점 찾기 | 주변 장소 |
+| `demo_mode` | 데모 모드 여부 (사이드바 토글, `app.py`에서 한 번만 그림) | app.py | 중간지점 찾기, 주변 장소 |
+
+위젯 값은 `_키` 에 두고 `on_change`로 `키` 에 복사한다 (`prepare`/`keep`). 다른 페이지에 다녀와도 입력이 남게 하기 위함.
 
 선행 데이터가 없는 페이지는 오류 대신 안내 문구 + `st.page_link`로 이전 페이지 안내.
 
