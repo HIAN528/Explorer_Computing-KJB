@@ -4,7 +4,7 @@
 - search_places: 키워드로 장소 검색 (출발지 입력용)
 - get_transit_minutes: 대중교통 최소 소요시간(분)
 - estimate_minutes: API 실패·데모 모드일 때 쓰는 추정 소요시간(분)
-- search_nearby: 역 주변 카페·음식점 검색 (메뉴 키워드 검색 가능, 최대 45곳)
+- search_nearby: 역 주변 카페·음식점 검색 (가까운 45곳 + 원을 3×3 칸으로 나눠 최대 450곳, 메뉴 키워드 검색 가능)
 - build_time_table: 후보역 × 참여자 소요시간 표 (2단계 탐색의 2단계)
 
 규칙
@@ -12,6 +12,8 @@
 - 모든 함수는 실패해도 예외를 던지지 않고 (결과, 오류 문구)를 돌려준다.
 - 카카오의 x = 경도(lon), y = 위도(lat). 이 변환은 이 파일 안에서만 한다.
 """
+
+import math
 
 import pandas as pd
 import requests
@@ -30,7 +32,8 @@ EXTRA_MINUTES = 10
 
 # 카테고리 코드
 CATEGORY_CODES = {"카페": "CE7", "음식점": "FD6"}
-MAX_PAGES = 3  # 주변 장소는 15곳 × 3페이지 = 최대 45곳
+MAX_PAGES = 3  # 카카오는 한 조건에 15곳 × 3페이지 = 최대 45곳만 알려 준다
+GRID = 3       # 주변 장소: 가장 가까운 45곳 + 원을 3×3 칸으로 나눠 칸마다 45곳 (최대 450곳)
 MAX_MESSAGE = 200  # 화면에 보여줄 오류 문구 최대 길이
 
 # 응답 모양이 예상과 다를 때(필요한 칸이 없거나, 숫자가 아니거나) 나는 오류들
@@ -159,69 +162,135 @@ def estimate_minutes(start, end):
     return round(km / AVG_SPEED_KMH * 60 + EXTRA_MINUTES)
 
 
-def search_nearby(category, lat, lon, radius, keyword=""):
-    """역 주변 장소를 가까운 순으로 검색한다.
+def split_into_cells(lat, lon, radius, n=GRID):
+    """역을 가운데 두고, 한 변이 반경의 2배인 정사각형을 n×n 칸으로 나눈다.
 
-    category: "카페" 또는 "음식점", radius: 반경(m)
-    keyword: 메뉴 키워드(예: "삼겹살"). 비어 있으면 카테고리 검색(가까운 순),
-             있으면 키워드 검색(관련도 순)을 쓴다. 키워드 검색에도 카테고리 코드를
-             함께 넘겨서 해당 종류만 나오게 한다.
-    카카오는 한 번에 15곳씩 주므로 최대 MAX_PAGES 페이지(45곳)까지 이어서 받는다.
-
-    반환: (장소 목록, 오류 문구)
-      장소: {"name", "distance"(m), "group"(세부 분류), "category"(가장 자세한 종류), "url", "lat", "lon"}
+    카카오 장소 검색은 한 조건에 최대 45곳만 알려 준다. 넓은 원을 한 번에 가까운 순으로 검색하면
+    역 바로 앞 45곳만 나와서 반경을 넓혀도 결과가 같다. 칸을 나눠 칸마다 검색하면 원 전체에서 고르게 찾는다.
+    반환: 카카오 rect 파라미터 문자열 목록 ("왼쪽 경도,아래 위도,오른쪽 경도,위 위도")
     """
-    params = {
-        "category_group_code": CATEGORY_CODES[category],
-        "x": lon,
-        "y": lat,
-        "radius": radius,
-        "sort": "distance",
-        "size": 15,
-    }
-    if keyword.strip() == "":
-        url = CATEGORY_URL
-    else:
-        # 키워드 검색을 거리순으로 받으면 '파스타'에 와인바·빵집처럼 관련 적은 곳이 앞에 섞인다.
-        # 그래서 키워드 검색은 관련도순(accuracy)으로 받고, 그 순서를 그대로 쓴다.
-        url = KEYWORD_URL
-        params["query"] = keyword.strip()
-        params["sort"] = "accuracy"
+    # 미터 → 도 단위: 위도 1도 ≈ 111km, 경도 1도 ≈ 111km × cos(위도)
+    half_lat = radius / 111000
+    half_lon = radius / (111000 * math.cos(math.radians(lat)))
+    step_lat = 2 * half_lat / n
+    step_lon = 2 * half_lon / n
 
-    places = []
+    cells = []
+    for row in range(n):
+        for col in range(n):
+            south = lat - half_lat + row * step_lat
+            west = lon - half_lon + col * step_lon
+            # 카카오 rect는 x(경도), y(위도) 순서
+            cells.append(f"{west},{south},{west + step_lon},{south + step_lat}")
+    return cells
+
+
+def fetch_pages(url, params):
+    """같은 조건으로 최대 MAX_PAGES 페이지(15곳 × 3 = 45곳)까지 이어서 받는다.
+
+    반환: (카카오 documents 목록, 오류 문구). 2페이지부터 실패하면 이미 받은 것만 돌려준다.
+    """
+    docs = []
     for page in range(1, MAX_PAGES + 1):
         params["page"] = page
         data, error = call_kakao(url, params)
         if error:
-            if page == 1:
+            if len(docs) == 0:
                 return [], error
-            break  # 2페이지부터 실패하면 이미 받은 결과만 쓴다
-
+            break
         try:
-            for doc in data.get("documents", []):
-                # "음식점 > 한식 > 육류,고기 > 삼겹살" → 분류 "한식", 종류 "삼겹살"
-                parts = doc.get("category_name", "").split(" > ")
-                places.append({
-                    "name": doc["place_name"],
-                    "distance": int(doc.get("distance") or 0),
-                    "group": parts[1] if len(parts) > 1 else parts[0],
-                    "category": parts[-1],
-                    "url": safe_link(doc.get("place_url")),
-                    "lat": float(doc["y"]),
-                    "lon": float(doc["x"]),
-                })
+            docs += list(data.get("documents", []))
             is_end = data.get("meta", {}).get("is_end", True)
         except PARSE_ERRORS:
-            if page == 1 and len(places) == 0:
+            if len(docs) == 0:
                 return [], PARSE_ERROR_MESSAGE
-            break  # 이미 받은 결과만 쓴다
-
+            break
         if is_end:  # 마지막 페이지면 그만
             break
+    return docs, None
+
+
+def to_place(doc):
+    """카카오 documents 한 개를 장소 dict로 바꾼다."""
+    # "음식점 > 한식 > 육류,고기 > 삼겹살" → 분류 "한식", 종류 "삼겹살"
+    parts = doc.get("category_name", "").split(" > ")
+    return {
+        "id": doc.get("id") or doc["place_name"],
+        "name": doc["place_name"],
+        "distance": int(doc.get("distance") or 0),
+        "group": parts[1] if len(parts) > 1 else parts[0],
+        "category": parts[-1],
+        "url": safe_link(doc.get("place_url")),
+        "lat": float(doc["y"]),
+        "lon": float(doc["x"]),
+    }
+
+
+def search_nearby(category, lat, lon, radius, keyword=""):
+    """역 주변 장소를 검색한다.
+
+    category: "카페" 또는 "음식점", radius: 반경(m)
+    keyword: 메뉴 키워드(예: "삼겹살").
+      - 비어 있으면 카테고리 검색: ① 역에서 가장 가까운 45곳 + ② 원을 3×3 칸으로 나눠 칸마다 45곳을
+        합친 뒤(중복 제거) 가까운 순으로 정렬한다. (최대 10 × 45 = 450곳, 호출 최대 30번)
+      - 있으면 키워드 검색: 원 전체에서 관련도순(accuracy)으로 45곳을 받고 그 순서를 그대로 쓴다.
+        (거리순으로 받으면 '파스타'에 와인바·빵집처럼 관련 적은 곳이 앞에 섞이기 때문)
+    x, y(역 좌표)를 함께 넘기면 응답에 역에서의 거리(distance, m)가 들어온다.
+
+    반환: (장소 목록, 오류 문구)
+      장소: {"id", "name", "distance"(m), "group"(세부 분류), "category"(가장 자세한 종류), "url", "lat", "lon"}
+      일부 칸만 실패하면 찾은 장소와 함께 안내 문구를 돌려준다.
+    """
+    base = {"category_group_code": CATEGORY_CODES[category], "x": lon, "y": lat, "size": 15}
+
+    docs = []
+    error = None
+    if keyword.strip() == "":
+        # ① 역에서 가장 가까운 45곳 (칸으로만 나누면 역 바로 앞 가게가 적게 나오므로 먼저 받는다)
+        params = dict(base)
+        params["radius"] = radius
+        params["sort"] = "distance"
+        docs, error = fetch_pages(CATEGORY_URL, params)
+        # ② 원을 3×3 칸으로 나눠 칸마다 45곳씩 (원 바깥쪽까지 고르게)
+        cells = [] if error else split_into_cells(lat, lon, radius)  # 첫 검색부터 실패하면 칸 검색은 건너뛴다
+        for rect in cells:
+            params = dict(base)  # 칸마다 새 dict (원본을 바꾸지 않도록 복사)
+            params["rect"] = rect
+            cell_docs, cell_error = fetch_pages(CATEGORY_URL, params)
+            docs += cell_docs
+            if cell_error:  # 키 없음·쿼터 초과·네트워크 오류는 다른 칸도 실패하므로 멈춘다
+                error = cell_error
+                break
+    else:
+        params = dict(base)
+        params["query"] = keyword.strip()
+        params["radius"] = radius
+        params["sort"] = "accuracy"
+        docs, error = fetch_pages(KEYWORD_URL, params)
+
+    places = []
+    seen = set()  # 이미 넣은 장소 id (칸 경계에 걸친 장소가 두 번 들어가지 않도록)
+    try:
+        for doc in docs:
+            place = to_place(doc)
+            # 정사각형 모서리 부분은 원 밖이므로 뺀다
+            if place["id"] in seen or place["distance"] > radius:
+                continue
+            seen.add(place["id"])
+            places.append(place)
+    except PARSE_ERRORS:
+        error = PARSE_ERROR_MESSAGE
+
+    if keyword.strip() == "":
+        places.sort(key=lambda p: p["distance"])  # 칸별 결과를 합쳤으니 가까운 순으로 다시 정렬
 
     if len(places) == 0:
+        if error:
+            return [], error
         what = f"'{keyword.strip()}' {category}" if keyword.strip() else category
         return [], f"반경 {radius}m 안에 {what}가 없습니다."
+    if error:
+        return places, f"일부 구역은 검색하지 못했습니다. ({error})"
     return places, None
 
 
@@ -280,9 +349,14 @@ if __name__ == "__main__":
     print("서울대입구 → 강남 대중교통:", error or f"{minutes}분")
     print("서울대입구 → 강남 추정치:", estimate_minutes(a, gangnam), "분")
 
-    near, error = search_nearby("카페", gangnam["lat"], gangnam["lon"], 300)
-    print("강남 300m 카페:", error or f"{len(near)}곳, 예: {[p['name'] for p in near[:3]]}")
-    assert len(near) > 15  # 강남역 주변 카페는 여러 페이지에 걸쳐 있다
+    assert len(split_into_cells(gangnam["lat"], gangnam["lon"], 1000)) == 9  # 3×3 칸
+
+    near, error = search_nearby("음식점", gangnam["lat"], gangnam["lon"], 1000)
+    farthest = max(p["distance"] for p in near) if near else 0
+    print("강남 1000m 음식점:", error or f"{len(near)}곳, 가장 먼 곳 {farthest}m")
+    assert len(near) > 45 and farthest > 500  # 45곳 제한을 넘고, 원 바깥쪽까지 찾는다
+    assert len(set(p["id"] for p in near)) == len(near)  # 중복 없음
+    assert all(p["distance"] <= 1000 for p in near)    # 모두 원 안
 
     near, error = search_nearby("음식점", gangnam["lat"], gangnam["lon"], 500, keyword="파스타")
     print("강남 500m '파스타' 음식점:", error or f"{len(near)}곳, 예: {[(p['name'], p['group']) for p in near[:3]]}")

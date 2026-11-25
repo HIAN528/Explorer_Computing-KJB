@@ -268,10 +268,10 @@ st.caption("단위: 분. 점수는 0~1 (낮을수록 좋음). * 표시는 추정
 # ---------------- 확정 → 주변 장소로 ----------------
 
 st.subheader("4. 약속 장소 확정")
-top3 = list(ranking.index[:3])
+choices = list(top5.index)  # 위 표에 보이는 상위 5개 역 중에서 고른다
 c1, c2 = st.columns([3, 1])
 with c1:
-    pick = st.selectbox("상위 3개 중에서 고르세요", top3,
+    pick = st.selectbox("상위 5개 중에서 고르세요", choices,
                         format_func=lambda s: f"{ranking.loc[s, '순위']}위 · {s}역 (최장 {ranking.loc[s, '최장']:.0f}분)")
 with c2:
     st.write("")

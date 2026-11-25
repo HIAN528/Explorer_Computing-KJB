@@ -88,7 +88,7 @@ where2meet/
 | 용도 | URL | 주요 파라미터 | 주요 응답 |
 |---|---|---|---|
 | 키워드 장소 검색 | `https://dapi.kakao.com/v2/local/search/keyword.json` | `query`, `size`(1~15) | `documents[]`: `place_name`, `address_name`, `x`, `y`, `place_url` |
-| 카테고리 장소 검색 | `https://dapi.kakao.com/v2/local/search/category.json` | `category_group_code`(CE7 카페, FD6 음식점), `x`, `y`, `radius`(m), `sort=distance` | `documents[]`: `place_name`, `distance`, `category_name`, `place_url`, `x`, `y` |
+| 카테고리 장소 검색 | `https://dapi.kakao.com/v2/local/search/category.json` | `category_group_code`(CE7 카페, FD6 음식점), `x`, `y`, `radius`(m) 또는 `rect`(사각형 범위), `sort=distance`, `page`(1~3) | `documents[]`: `id`, `place_name`, `distance`, `category_name`, `place_url`, `x`, `y` |
 | 대중교통 경로 조회 | `https://dapi.kakao.com/v2/routing/publictraffic` | `start_x`, `start_y`, `end_x`, `end_y` (WGS84 경도/위도) | `status`, `routes[].properties.totalTime`(초), `transfers`, `fare.value`(원), `type`(BUS/SUBWAY/BUS_AND_SUBWAY), `routes[].steps[]` |
 
 - 대중교통 `status` 값: `OK`, `STARTNODES_NULL`, `ENDNODES_NULL`, `EQUAL_POINTS`, `INVALID_REQUEST`, `NO_RESULTS`.
@@ -116,8 +116,10 @@ where2meet/
 - **중간지점 찾기:** 참여자 2~6명(이름 + 출발지 검색 → 검색 결과 5개 중 selectbox 선택,
   입력이 바뀔 때만 재검색) → 기준 선택 → 실행(진행률 표시) → 추천역, 추정값 안내,
   사람별 이동시간 막대그래프(plotly), folium 지도(출발지 파랑, 추천역 빨강 별, 연결선,
-  `st_folium(..., returned_objects=[])`), 상위 5개 표, 상위 3개 중 확정 selectbox.
+  `st_folium(..., returned_objects=[])`), 상위 5개 표, 상위 5개 중 확정 selectbox.
 - **주변 장소:** 카페/음식점 선택, 반경 300~1000m, 표(이름·거리·종류·카카오맵 링크) + 지도.
+  카카오는 한 조건에 최대 45곳만 주므로 가까운 45곳 + 원을 3×3 칸(`rect`)으로 나눠 칸마다 검색(최대 450곳, 호출 최대 30번).
+  메뉴 키워드 검색은 관련도순 45곳.
 - **정산:** 참여자 자동 불러오기(없으면 직접 입력), `st.data_editor`로 이름/낸 금액,
   송금 목록("민수 → 지수 15,000원"), 잔액 막대그래프(+받을 돈/−낼 돈). 그리디 방식.
 - **분석 실험실 (API 재호출 없음):** 지도상 중간점(centroid)에 가장 가까운 후보역 vs 추천역 비교,

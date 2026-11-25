@@ -2,7 +2,8 @@
 주변 장소 페이지: 확정한 역 주변의 카페·음식점
 
 - 중간지점 찾기에서 확정한 역(st.session_state["selected_station"])을 쓴다.
-- 종류(카페/음식점)와 반경(300~1000m)을 고르면 가까운 순으로 최대 45곳을 보여준다.
+- 종류(카페/음식점)와 반경(300~1000m)을 고르면 가까운 순으로 보여준다.
+  (카카오는 한 번에 45곳까지만 주므로, 가까운 45곳 + 반경을 9구역으로 나눠 구역마다 찾아 최대 450곳)
 - 메뉴 키워드(예: 삼겹살)를 넣으면 그 메뉴와 관련된 곳을 관련도 순으로 찾는다.
 - 받은 결과 안에서 세부 분류(한식·양식…)로 거를 수 있다. (API 추가 호출 없음)
 - 같은 조건이면 다시 검색하지 않는다. (조건이 바뀔 때만 API 호출)
@@ -61,7 +62,7 @@ else:
     condition = (station_name, category, radius, keyword.strip())
     saved = st.session_state.get("nearby")
     if saved is None or saved["condition"] != condition:
-        with st.spinner("주변 장소를 찾는 중..."):
+        with st.spinner("주변 장소를 찾는 중... (반경을 여러 구역으로 나눠 찾느라 몇 초 걸립니다)"):
             places, error = search_nearby(category, station["lat"], station["lon"], radius, keyword)
         st.session_state["nearby"] = {"condition": condition, "places": places, "error": error}
     places = st.session_state["nearby"]["places"]
@@ -96,20 +97,27 @@ with col_table:
             hide_index=True,
             column_config={"카카오맵": st.column_config.LinkColumn("카카오맵", display_text="열기")},
         )
+        if keyword.strip():
+            st.caption("메뉴 키워드 검색은 반경 안에서 관련도가 높은 순으로 최대 45곳을 보여줍니다.")
+        else:
+            st.caption("카카오는 한 번에 45곳까지만 알려 주므로, 가장 가까운 45곳에 더해 반경을 9구역으로 나눠 "
+                       "구역마다 찾았습니다. 그래서 반경을 넓히면 바깥쪽 장소도 나옵니다.")
         st.caption("표의 열 이름을 누르면 그 기준으로 정렬됩니다. 장소 정보 출처: 카카오 로컬 API")
 
 with col_map:
-    fmap = folium.Map(location=[station["lat"], station["lon"]], zoom_start=15)
+    # 반경이 넓으면 한 단계 멀리서 보여줘야 원 전체가 지도에 들어온다
+    fmap = folium.Map(location=[station["lat"], station["lon"]], zoom_start=16 if radius <= 500 else 15)
     # 검색 반경 원
     folium.Circle([station["lat"], station["lon"]], radius=radius,
                   color="red", fill=True, fill_opacity=0.05).add_to(fmap)
     folium.Marker([station["lat"], station["lon"]], tooltip=f"{station_name}역",
                   icon=folium.Icon(color="red", icon="star")).add_to(fmap)
+    # 장소가 수백 곳이라 핀 아이콘 대신 작은 점(CircleMarker)으로 표시한다
     for place in places:
-        folium.Marker(
-            [place["lat"], place["lon"]],
+        folium.CircleMarker(
+            [place["lat"], place["lon"]], radius=5,
+            color=MARKER_COLORS[category], fill=True, fill_opacity=0.7, weight=1,
             tooltip=f"{html.escape(place['name'])} ({place['distance']}m)",  # 툴팁은 HTML이므로 글자 그대로
-            icon=folium.Icon(color=MARKER_COLORS[category], icon="cutlery" if category == "음식점" else "glass"),
         ).add_to(fmap)
     st_folium(fmap, height=480, use_container_width=True, returned_objects=[])
 
