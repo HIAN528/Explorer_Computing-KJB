@@ -8,6 +8,8 @@
 - 같은 조건이면 다시 검색하지 않는다. (조건이 바뀔 때만 API 호출)
 """
 
+import html
+
 import folium
 import pandas as pd
 import streamlit as st
@@ -15,6 +17,7 @@ from streamlit_folium import st_folium
 
 from utils.candidates import load_stations
 from utils.kakao_api import search_nearby
+from utils.text import md_escape
 
 st.set_page_config(page_title="주변 장소", page_icon="☕", layout="wide")
 
@@ -47,7 +50,7 @@ with c1:
 with c2:
     radius = st.slider("반경 (m)", 300, 1000, 500, step=100)
 with c3:
-    keyword = st.text_input("메뉴 키워드 (선택)", placeholder="예: 삼겹살, 파스타, 디저트",
+    keyword = st.text_input("메뉴 키워드 (선택)", placeholder="예: 삼겹살, 파스타, 디저트", max_chars=30,
                             help="비워 두면 종류 전체를 가까운 순으로, 입력하면 그 메뉴와 관련된 곳만 찾습니다.")
 
 if demo_mode:
@@ -65,7 +68,7 @@ else:
     error = st.session_state["nearby"]["error"]
 
 if error:
-    st.warning(error)
+    st.warning(md_escape(error))  # 오류 문구에 메뉴 키워드(사용자 입력)가 들어갈 수 있다
 
 # ---------------- 세부 분류 필터 (API 호출 없이 받은 결과 안에서 거르기) ----------------
 if places:
@@ -82,7 +85,7 @@ col_table, col_map = st.columns([1, 1])
 with col_table:
     if places:
         if keyword.strip():
-            st.markdown(f"**'{keyword.strip()}' 관련 {category} {len(places)}곳** (관련도 순)")
+            st.markdown(f"**'{md_escape(keyword.strip())}' 관련 {category} {len(places)}곳** (관련도 순)")
         else:
             st.markdown(f"**{category} {len(places)}곳** (가까운 순)")
         table = pd.DataFrame(places)
@@ -105,7 +108,7 @@ with col_map:
     for place in places:
         folium.Marker(
             [place["lat"], place["lon"]],
-            tooltip=f"{place['name']} ({place['distance']}m)",
+            tooltip=f"{html.escape(place['name'])} ({place['distance']}m)",  # 툴팁은 HTML이므로 글자 그대로
             icon=folium.Icon(color=MARKER_COLORS[category], icon="cutlery" if category == "음식점" else "glass"),
         ).add_to(fmap)
     st_folium(fmap, height=480, use_container_width=True, returned_objects=[])

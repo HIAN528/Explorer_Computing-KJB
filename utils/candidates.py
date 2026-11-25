@@ -19,6 +19,7 @@ import streamlit as st
 
 EARTH_RADIUS_KM = 6371  # 지구 반지름 (km)
 STATIONS_PATH = "data/stations.csv"
+MAX_START_KM = 40  # 출발지에서 가장 가까운 역이 이보다 멀면 수도권 밖으로 본다
 
 
 def haversine_km(lat1, lon1, lat2, lon2):
@@ -113,6 +114,12 @@ def nearest_station(stations, lat, lon):
             best_dist = d
             best_row = station
     return best_row
+
+
+def km_to_nearest_station(stations, lat, lon):
+    """주어진 지점에서 가장 가까운 역까지의 직선거리(km). 수도권 밖 출발지를 걸러낼 때 쓴다."""
+    station = nearest_station(stations, lat, lon)
+    return haversine_km(lat, lon, station["lat"], station["lon"])
 
 
 # ---------------- 동작 확인: python -m utils.candidates ----------------

@@ -31,6 +31,21 @@ EXTRA_MINUTES = 10
 # 카테고리 코드
 CATEGORY_CODES = {"카페": "CE7", "음식점": "FD6"}
 MAX_PAGES = 3  # 주변 장소는 15곳 × 3페이지 = 최대 45곳
+MAX_MESSAGE = 200  # 화면에 보여줄 오류 문구 최대 길이
+
+# 응답 모양이 예상과 다를 때(필요한 칸이 없거나, 숫자가 아니거나) 나는 오류들
+PARSE_ERRORS = (KeyError, TypeError, ValueError, AttributeError)
+PARSE_ERROR_MESSAGE = "카카오 응답 형식이 예상과 달라 결과를 읽지 못했습니다."
+
+
+def safe_link(url):
+    """카카오맵 링크가 웹 주소일 때만 쓴다. http는 https로 바꾸고, 그 밖의 형식(javascript: 등)은 버린다."""
+    url = str(url or "")
+    if url.startswith("http://"):
+        url = "https://" + url[len("http://"):]
+    if not url.startswith("https://"):
+        return ""
+    return url
 
 
 def get_api_key():
@@ -65,6 +80,8 @@ def call_kakao(url, params):
             message = body.get("msg") or body.get("message") or response.text
         except ValueError:
             message = response.text
+        # 서버가 긴 HTML 오류 페이지를 돌려줄 수도 있으므로 앞 200자만 보여준다
+        message = str(message)[:MAX_MESSAGE]
         return None, f"카카오 API 오류 (HTTP {response.status_code}): {message}"
 
     try:
@@ -87,13 +104,16 @@ def search_places(query, size=5):
         return [], error
 
     places = []
-    for doc in data.get("documents", []):
-        places.append({
-            "name": doc["place_name"],
-            "address": doc.get("road_address_name") or doc.get("address_name", ""),
-            "lat": float(doc["y"]),  # y = 위도
-            "lon": float(doc["x"]),  # x = 경도
-        })
+    try:
+        for doc in data.get("documents", []):
+            places.append({
+                "name": doc["place_name"],
+                "address": doc.get("road_address_name") or doc.get("address_name", ""),
+                "lat": float(doc["y"]),  # y = 위도
+                "lon": float(doc["x"]),  # x = 경도
+            })
+    except PARSE_ERRORS:
+        return [], PARSE_ERROR_MESSAGE
     if len(places) == 0:
         return [], f"'{query}' 검색 결과가 없습니다."
     return places, None
@@ -115,19 +135,22 @@ def get_transit_minutes(start, end):
     if error:
         return None, error
 
-    status = data.get("status")
-    if status == "EQUAL_POINTS":  # 출발지 = 도착지
-        return 0, None
-    if status != "OK":
-        return None, f"대중교통 경로를 찾지 못했습니다. (status = {status})"
+    try:
+        status = data.get("status")
+        if status == "EQUAL_POINTS":  # 출발지 = 도착지
+            return 0, None
+        if status != "OK":
+            return None, f"대중교통 경로를 찾지 못했습니다. (status = {status})"
 
-    routes = data.get("routes", [])
-    if len(routes) == 0:
-        return None, "대중교통 경로가 비어 있습니다."
+        routes = data.get("routes", [])
+        if len(routes) == 0:
+            return None, "대중교통 경로가 비어 있습니다."
 
-    # 여러 경로 중 가장 짧은 totalTime(초)
-    shortest = min(route["properties"]["totalTime"] for route in routes)
-    return round(shortest / 60), None
+        # 여러 경로 중 가장 짧은 totalTime(초)
+        shortest = min(float(route["properties"]["totalTime"]) for route in routes)
+        return round(shortest / 60), None
+    except PARSE_ERRORS:
+        return None, PARSE_ERROR_MESSAGE
 
 
 def estimate_minutes(start, end):
@@ -174,20 +197,26 @@ def search_nearby(category, lat, lon, radius, keyword=""):
                 return [], error
             break  # 2페이지부터 실패하면 이미 받은 결과만 쓴다
 
-        for doc in data.get("documents", []):
-            # "음식점 > 한식 > 육류,고기 > 삼겹살" → 분류 "한식", 종류 "삼겹살"
-            parts = doc.get("category_name", "").split(" > ")
-            places.append({
-                "name": doc["place_name"],
-                "distance": int(doc.get("distance") or 0),
-                "group": parts[1] if len(parts) > 1 else parts[0],
-                "category": parts[-1],
-                "url": doc.get("place_url", ""),
-                "lat": float(doc["y"]),
-                "lon": float(doc["x"]),
-            })
+        try:
+            for doc in data.get("documents", []):
+                # "음식점 > 한식 > 육류,고기 > 삼겹살" → 분류 "한식", 종류 "삼겹살"
+                parts = doc.get("category_name", "").split(" > ")
+                places.append({
+                    "name": doc["place_name"],
+                    "distance": int(doc.get("distance") or 0),
+                    "group": parts[1] if len(parts) > 1 else parts[0],
+                    "category": parts[-1],
+                    "url": safe_link(doc.get("place_url")),
+                    "lat": float(doc["y"]),
+                    "lon": float(doc["x"]),
+                })
+            is_end = data.get("meta", {}).get("is_end", True)
+        except PARSE_ERRORS:
+            if page == 1 and len(places) == 0:
+                return [], PARSE_ERROR_MESSAGE
+            break  # 이미 받은 결과만 쓴다
 
-        if data.get("meta", {}).get("is_end", True):  # 마지막 페이지면 그만
+        if is_end:  # 마지막 페이지면 그만
             break
 
     if len(places) == 0:

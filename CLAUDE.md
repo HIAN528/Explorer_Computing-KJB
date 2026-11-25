@@ -46,14 +46,20 @@ where2meet/
 │   ├── candidates.py       # 하버사인 거리, 후보역 추출, 중심점
 │   ├── fairness.py         # 공평성 점수, 프리셋
 │   ├── settle.py           # 정산 알고리즘
-│   └── state.py            # 페이지 이동 후 입력값 유지(prepare/keep), 데모 모드 토글
+│   ├── state.py            # 페이지 이동 후 입력값 유지(prepare/keep), 데모 모드 토글
+│   └── text.py             # 사용자 입력을 마크다운 문구에 넣을 때 특수문자 처리(md_escape)
 ├── data/stations.csv       # 지하철역 name, lines, lat, lon (공공데이터 전처리 결과)
 ├── prepare_data.py         # 원본 공공데이터 → stations.csv 전처리 스크립트
 ├── docs/                   # ai_log.md, troubleshooting.md
 ├── .streamlit/secrets.toml # (git 제외) KAKAO_REST_KEY = "..."
 ├── .gitignore              # .venv/, __pycache__/, .streamlit/secrets.toml
-└── requirements.txt        # streamlit, requests, pandas, plotly, folium, streamlit-folium
+└── requirements.txt        # streamlit, requests, pandas, plotly, folium, streamlit-folium (로컬에서 확인한 버전으로 고정)
 ```
+
+### 사용자 입력 표시 규칙 (보안 점검 결과)
+- folium 툴팁은 HTML로 그려지므로 사용자 입력·카카오 장소 이름은 `html.escape()`로 감싼다.
+- `st.markdown`·`st.warning` 등 마크다운 문구에 사용자 입력을 넣을 때는 `md_escape()`를 쓴다.
+- 카카오맵 링크는 `safe_link()`로 https 주소만 쓴다. 카카오 응답 해석은 try/except로 감싼다.
 
 ## 핵심 로직: 2단계 탐색
 

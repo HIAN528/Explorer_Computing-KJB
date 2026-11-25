@@ -11,6 +11,7 @@ import plotly.express as px
 import streamlit as st
 
 from utils.settle import settle
+from utils.text import md_escape
 
 st.set_page_config(page_title="정산", page_icon="💰", layout="wide")
 
@@ -67,6 +68,11 @@ with col_button:
 table = edited.copy()
 table["이름"] = table["이름"].fillna("").astype(str).str.strip()
 table["낸 금액"] = table["낸 금액"].fillna(0)
+# 금액은 적었는데 이름을 빠뜨린 줄은 조용히 빠지지 않도록 알려 준다
+no_name = table[(table["이름"] == "") & (table["낸 금액"] != 0)]
+if len(no_name) > 0:
+    st.warning(f"이름이 빈 줄 {len(no_name)}개(금액 {int(no_name['낸 금액'].sum()):,}원)는 계산에서 뺐습니다. "
+               "포함하려면 이름을 적어 주세요.")
 table = table[table["이름"] != ""]  # 이름이 빈 줄은 빼고 계산
 
 if len(table) < 2:
@@ -99,7 +105,8 @@ with col_list:
     if len(transfers) == 0:
         st.success("모두 똑같이 냈습니다. 보낼 돈이 없어요!")
     for t in transfers:
-        st.markdown(f"- **{t['from']}** → **{t['to']}** &nbsp; {t['amount']:,}원")
+        # 이름은 사용자가 입력한 글자이므로 마크다운 기호가 있어도 글자 그대로 보이게 한다
+        st.markdown(f"- **{md_escape(t['from'])}** → **{md_escape(t['to'])}** &nbsp; {t['amount']:,}원")
     st.caption("1원 단위로 반올림하므로, 나누어떨어지지 않으면 몇 원 차이가 날 수 있습니다.")
 
 with col_chart:

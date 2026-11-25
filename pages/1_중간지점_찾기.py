@@ -10,16 +10,19 @@
      → 기준·슬라이더를 바꿔도 API를 다시 부르지 않는다. (핵심 설계)
 """
 
+import html
+
 import folium
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 from streamlit_folium import st_folium
 
-from utils.candidates import find_candidates, load_stations, search_stations
+from utils.candidates import MAX_START_KM, find_candidates, km_to_nearest_station, load_stations, search_stations
 from utils.fairness import PRESET_DESCRIPTIONS, PRESETS, score_stations
 from utils.kakao_api import build_time_table, search_places
 from utils.state import keep, prepare
+from utils.text import md_escape
 
 st.set_page_config(page_title="중간지점 찾기", page_icon="📍", layout="wide")
 
@@ -109,11 +112,12 @@ for i in range(count):
     c1, c2, c3 = st.columns([1, 2, 3])
     with c1:
         prepare(f"name_{i}", f"참여자{i + 1}")
-        name = st.text_input("이름", key=f"_name_{i}", on_change=keep, args=[f"name_{i}"])
+        name = st.text_input("이름", key=f"_name_{i}", on_change=keep, args=[f"name_{i}"], max_chars=10)
     with c2:
         prepare(f"query_{i}", "")
+        # 카카오 검색어는 100자까지만 받으므로 입력 길이를 제한한다
         query = st.text_input("출발지 검색", key=f"_query_{i}", on_change=keep, args=[f"query_{i}"],
-                              placeholder="예: 서울대입구역, 홍대입구")
+                              placeholder="예: 서울대입구역, 홍대입구", max_chars=50)
     search = get_search(i, query, demo_mode, stations)
     with c3:
         places = search["places"]
@@ -168,6 +172,12 @@ else:
 calls = count * NUM_CANDIDATES
 button_help = f"후보역 {NUM_CANDIDATES}곳 × {count}명 = 대중교통 조회 {calls}회"
 if st.button("🔍 공평한 약속 장소 찾기", type="primary", help=button_help):
+    # 수도권 밖 출발지(예: 부산)는 대중교통 경로가 없어(NO_RESULTS) API 호출만 낭비하므로 미리 막는다
+    for person in people:
+        km = km_to_nearest_station(stations, person["lat"], person["lon"])
+        if km > MAX_START_KM:
+            input_problems.append(f"{md_escape(person['name'])}님의 출발지({md_escape(person['place'])})는 "
+                                  f"가장 가까운 수도권 지하철역에서 {km:.0f}km 떨어져 있습니다. 수도권 출발지만 지원합니다.")
     if input_problems:
         for problem in input_problems:
             st.error(problem)
@@ -216,7 +226,7 @@ if num_est > 0:
     if result["errors"]:
         with st.expander("API 오류 내용 보기"):
             for error in result["errors"]:
-                st.write("- " + error)
+                st.write("- " + md_escape(error))
 
 col_chart, col_map = st.columns(2)
 
@@ -239,9 +249,12 @@ with col_map:
     fmap = folium.Map(location=[best_row["lat"], best_row["lon"]], zoom_start=11)
     for person in r_people:
         minutes = times.loc[best, person["name"]]
+        # 지도 툴팁은 HTML로 그려지므로, 사용자가 입력한 글자는 html.escape로 '글자 그대로' 바꾼다
+        # (예: 이름이 "<b>민수</b>"여도 굵은 글씨가 아니라 그 글자대로 보인다)
+        who = html.escape(person["name"])
         folium.PolyLine([[person["lat"], person["lon"]], [best_row["lat"], best_row["lon"]]],
-                        color="red", weight=3, opacity=0.5, tooltip=f"{person['name']}: {minutes}분").add_to(fmap)
-        folium.Marker([person["lat"], person["lon"]], tooltip=f"{person['name']} ({person['place']})",
+                        color="red", weight=3, opacity=0.5, tooltip=f"{who}: {minutes}분").add_to(fmap)
+        folium.Marker([person["lat"], person["lon"]], tooltip=f"{who} ({html.escape(person['place'])})",
                       icon=folium.Icon(color="blue", icon="user")).add_to(fmap)
     folium.Marker([best_row["lat"], best_row["lon"]], tooltip=f"추천: {best}역",
                   icon=folium.Icon(color="red", icon="star")).add_to(fmap)
