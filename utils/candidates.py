@@ -3,6 +3,7 @@
 
 - haversine_km: 두 지점 사이 직선거리
 - load_stations: data/stations.csv 불러오기
+- search_stations: 역 이름으로 검색 (카카오 검색 대신 쓰는 예비 수단)
 - find_candidates: 참여자 위치로 후보역 k개 추리기 (2단계 탐색의 1단계)
 - centroid: 참여자들의 지도상 중간점
 - nearest_station: 어떤 지점에서 가장 가까운 역
@@ -40,6 +41,33 @@ def haversine_km(lat1, lon1, lat2, lon2):
 def load_stations(path=STATIONS_PATH):
     """역 목록(name, lines, lat, lon)을 DataFrame으로 불러온다."""
     return pd.read_csv(path)
+
+
+def search_stations(stations, query, size=5):
+    """역 이름에 검색어가 들어간 역을 찾는다. (데모 모드·카카오 검색 실패 시 대신 사용)
+
+    반환: 장소 목록 — kakao_api.search_places와 같은 모양 {"name", "address", "lat", "lon"}
+    """
+    word = query.strip()
+    if word.endswith("역") and len(word) > 1:
+        word = word[:-1]  # "강남역" → "강남"
+    if word == "":
+        return []
+
+    # 이름이 정확히 같은 역을 맨 앞에, 그다음 이름에 검색어가 들어간 역
+    exact = stations[stations["name"] == word]
+    partial = stations[stations["name"].str.contains(word, regex=False) & (stations["name"] != word)]
+    found = pd.concat([exact, partial]).head(size)
+
+    places = []
+    for _, row in found.iterrows():
+        places.append({
+            "name": f"{row['name']}역",
+            "address": row["lines"],
+            "lat": row["lat"],
+            "lon": row["lon"],
+        })
+    return places
 
 
 def find_candidates(stations, people, k=10):
@@ -109,4 +137,9 @@ if __name__ == "__main__":
     lat, lon = centroid(people)
     near = nearest_station(cands, lat, lon)
     print(f"\n중간점 ({lat:.4f}, {lon:.4f})에서 가장 가까운 후보역: {near['name']}")
+
+    found = search_stations(stations, "강남역")
+    print("\n'강남역' 역 이름 검색:", [p["name"] for p in found])
+    assert found[0]["name"] == "강남역"  # 정확히 같은 이름이 맨 앞
+    assert search_stations(stations, "   ") == []
     print("\ncandidates.py 확인 완료")
