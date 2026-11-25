@@ -15,3 +15,6 @@ secrets.toml
 Thumbs.db
 .vscode/
 .idea/
+
+# 원본 공공데이터 (prepare_data.py 입력, 결과물 stations.csv만 올림)
+data/raw/
